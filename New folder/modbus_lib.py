@@ -30,7 +30,7 @@ class ModbusRTUMaster:
 
     def read_holding_registers(self, start_address, quantity):
         if not (1 <= quantity <= 125): # ตรวจสอบจำนวน Register ที่สามารถอ่านได้ (FC03 สูงสุด 125)
-            print("Error: Quantity must be between 1 and 125.")
+            # print("Error: Quantity must be between 1 and 125.")
             return None
 
         # สร้าง ADU (Application Data Unit) สำหรับ Modbus RTU Request
@@ -67,7 +67,6 @@ class ModbusRTUMaster:
         bytes_read = 0
         
         # คำนวณ timeout based on UART settings (timeout และ timeout_char)
-        # นี่คือการประมาณเวลาสูงสุดที่ควรรอรับข้อมูล
         timeout_ms = self.uart.timeout + self.uart.timeout_char * expected_len 
         start_time = time.ticks_ms()
 
@@ -128,14 +127,22 @@ class ModbusTCPServer:
         self.ip = ip
         self.port = port
         self.registers = registers_data # อ้างอิงถึงลิสต์ holding_registers ส่วนกลาง
-        
-        # สร้าง Socket สำหรับ TCP Server
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # อนุญาตให้ใช้ Address ซ้ำได้
-        self.s.bind((self.ip, self.port))
-        self.s.listen(5) # ฟังการเชื่อมต่อได้สูงสุด 5 รายการ
-        self.s.settimeout(0.1) # ตั้ง timeout สำหรับ accept เพื่อให้ไม่บล็อกโปรแกรมหลัก
-        print(f"Modbus TCP Server listening on {self.ip}:{self.port}")
+        self.s = None # Initialize socket to None
+        self._setup_socket()
+
+    def _setup_socket(self):
+        try:
+            if self.s:
+                self.s.close() # ปิด socket เก่าถ้ามี
+            self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # อนุญาตให้ใช้ Address ซ้ำได้
+            self.s.bind((self.ip, self.port))
+            self.s.listen(5) # ฟังการเชื่อมต่อได้สูงสุด 5 รายการ
+            self.s.settimeout(0.1) # ตั้ง timeout สำหรับ accept เพื่อให้ไม่บล็อกโปรแกรมหลัก
+            print(f"Modbus TCP Server listening on {self.ip}:{self.port}")
+        except Exception as e:
+            print(f"Error setting up Modbus TCP Server socket: {e}")
+            self.s = None # ตั้งเป็น None ถ้ามีปัญหา
 
     def _process_modbus_request(self, request_adu):
         # โครงสร้าง Modbus TCP ADU:
@@ -203,11 +210,15 @@ class ModbusTCPServer:
         return response_adu
 
     def poll_for_clients(self):
+        if not self.s: # ตรวจสอบว่า socket ถูกสร้างขึ้นมาอย่างถูกต้อง
+            # print("Modbus TCP Server socket not initialized.")
+            return
+
         try:
             conn, addr = self.s.accept() # พยายามรับการเชื่อมต่อใหม่ (ไม่บล็อกเนื่องจาก timeout)
             # print(f"Connection from {addr}")
             
-            conn.settimeout(0.01) # ตั้ง timeout สำหรับ client socket เพื่อไม่ให้บล็อกการรับข้อมูล
+            conn.settimeout(0.01) # ตั้ง timeout สำหรับ client socket เพื่อไม่ให้บล็อกโปรแกรมหลัก
             try:
                 # อ่าน Modbus TCP ADU ทั้งหมด (สูงสุด 260 ไบต์)
                 request_adu = conn.recv(260) 
@@ -232,3 +243,13 @@ class ModbusTCPServer:
         except OSError as e:
             # print(f"Server accept error: {e}")
             pass
+
+    def close(self):
+        if self.s:
+            try:
+                self.s.close()
+                print("Modbus TCP Server socket closed.")
+            except Exception as e:
+                print(f"Error closing Modbus TCP socket: {e}")
+            finally:
+                self.s = None

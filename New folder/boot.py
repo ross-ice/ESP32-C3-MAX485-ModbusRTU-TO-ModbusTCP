@@ -6,12 +6,12 @@ import network
 import time
 
 # --- LED Configuration ---
-LED_PIN = 21 # GPIO Pin for the built-in LED (Commonly GPIO21 for ESP32-C3)
+LED_PIN = 21 # GPIO Pin for the built-in LED (Commonly GPIO21 for ESP32-C3 Super Mini)
 led = None
 
 # --- WiFi Configuration ---
-WIFI_SSID = "wifi-ice"      # <<<<< แก้ไขชื่อ WiFi ของคุณที่นี่
-WIFI_PASSWORD = ""          # <<<<< ยืนยันว่าไม่มีรหัสผ่านสำหรับ wifi-ice
+WIFI_SSID = "wifi-ice"      # <<< ใส่ชื่อ WiFi ของคุณที่นี่
+WIFI_PASSWORD = ""          # <<< ยืนยันว่าไม่มีรหัสผ่านสำหรับ wifi-ice
 
 # --- Start of Debugging LED (Simple blink to confirm boot) ---
 try:
@@ -30,6 +30,7 @@ except Exception as e:
 print("boot.py: Starting Wi-Fi connection...")
 
 def connect_wifi():
+ 
     nic = network.WLAN(network.STA_IF)
     
     # ถ้ามีการเชื่อมต่ออยู่แล้ว ให้ยกเลิกก่อน (เพื่อความแน่ใจในสถานะเริ่มต้น)
@@ -50,7 +51,17 @@ def connect_wifi():
     
     max_wait = 30 # รอนานสุด 30 วินาทีสำหรับการเชื่อมต่อ
     while max_wait > 0:
-        if nic.isconnected():
+        status = nic.status()
+        if status == network.STAT_GOT_IP:
+            break
+        if status == network.STAT_WRONG_PASSWORD:
+            print("\nboot.py: Error: Incorrect WiFi password.")
+            break
+        if status == network.STAT_NO_AP_FOUND:
+            print("\nboot.py: Error: WiFi AP not found.")
+            break
+        if status == network.STAT_CONNECT_FAIL:
+            print("\nboot.py: Error: WiFi connection failed (general error).")
             break
         max_wait -= 1
         print(".", end="")
@@ -66,7 +77,7 @@ def connect_wifi():
                 time.sleep_ms(50)
                 led.value(0)
                 time.sleep_ms(50)
-        return None 
+        return False # คืนค่า False หากเชื่อมต่อไม่ได้
     
     ip_info = nic.ifconfig()
     print("\nboot.py: WiFi Connected!")
@@ -79,7 +90,7 @@ def connect_wifi():
     if led:
         led.value(1) 
     
-    return ip_info[0]
+    return True # คืนค่า True หากเชื่อมต่อสำเร็จ
 
 # เรียกฟังก์ชันเชื่อมต่อ Wi-Fi ทันทีที่บูต
 connect_wifi()
